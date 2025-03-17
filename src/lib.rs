@@ -4,37 +4,9 @@
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
 
+use pkcs8::{EncodePrivateKey, LineEnding};
+use rsa::{pkcs1::DecodeRsaPrivateKey, RsaPrivateKey};
 use thiserror::Error;
-
-/// Errors from [`from_sec1_pem`]
-#[derive(Debug, Error)]
-pub enum ConvertSec1Error {
-    /// Failed to deserialize SEC1 private key from PEM
-    #[error("failed to deserialize SEC1 private key from PEM")]
-    Deserialize(#[source] sec1::Error),
-
-    /// Failed to serialize private key to PKCS#8 PEM
-    #[error("failed to serialize private key to PKCS#8 PEM")]
-    Serialize(#[source] sec1::pkcs8::Error),
-}
-
-/// Convert a private key from SEC1 PEM (`EC PRIVATE KEY` ) to PKCS#8 PEM (`PRIVATE KEY`).
-///
-/// # Errors
-///
-/// Returns `Err` when de/serialization fails. See [`ConvertSec1Error`].
-pub fn from_sec1_pem(pem: &str) -> Result<String, ConvertSec1Error> {
-    use sec1::{
-        pkcs8::{EncodePrivateKey, LineEnding, PrivateKeyDocument},
-        DecodeEcPrivateKey,
-    };
-    let pkdoc = PrivateKeyDocument::from_sec1_pem(pem).map_err(ConvertSec1Error::Deserialize)?;
-    let pkcs8_pem = pkdoc
-        .to_pkcs8_pem(LineEnding::LF)
-        .map_err(ConvertSec1Error::Serialize)?;
-    let pkcs8_pem: &str = pkcs8_pem.as_ref();
-    Ok(pkcs8_pem.to_owned())
-}
 
 /// Errors from [`from_pkcs1_pem`]
 #[derive(Debug, Error)]
@@ -54,15 +26,9 @@ pub enum ConvertPkcs1Error {
 ///
 /// Returns `Err` when de/serialization fails. See [`ConvertPkcs1Error`].
 pub fn from_pkcs1_pem(pem: &str) -> Result<String, ConvertPkcs1Error> {
-    use rsa::{
-        pkcs1::FromRsaPrivateKey,
-        pkcs8::{LineEnding, ToPrivateKey},
-        RsaPrivateKey,
-    };
     let pkey = RsaPrivateKey::from_pkcs1_pem(pem).map_err(ConvertPkcs1Error::Deserialize)?;
-    // TODO Use `LineEnding::default()`? Always use `LF` for now.
     let pkcs8_pem = pkey
-        .to_pkcs8_pem_with_le(LineEnding::LF)
+        .to_pkcs8_pem(LineEnding::LF)
         .map_err(ConvertPkcs1Error::Serialize)?;
     let pkcs8_pem: &str = pkcs8_pem.as_ref();
     Ok(pkcs8_pem.to_owned())
@@ -108,22 +74,6 @@ mod tests {
         // println!("{}", rsa_pem);
         // println!("{}", from_pkcs1_pem(rsa_pem).unwrap());
         let pkcs8_pem = from_pkcs1_pem(rsa_pem).unwrap();
-        assert!(pkcs8_pem.starts_with("-----BEGIN PRIVATE KEY-----"));
-        assert!(pkcs8_pem.ends_with("-----END PRIVATE KEY-----\n"));
-    }
-
-    #[test]
-    fn test_ec_conv() {
-        let ec_pem = indoc! {"
-            -----BEGIN EC PRIVATE KEY-----
-            MHcCAQEEIAL4r6d9lPq3XEDSZTL9l0D6thrPM7RiAhl3Fjuw9Ji2oAoGCCqGSM49
-            AwEHoUQDQgAE4U64dviQRMujGK0g80dwzgjV7fnwLkj6RfvINMHvD6eiCsphWIlq
-            cddTAoOjXVQDu3qMAS1Ghfyk1F377EW1Sw==
-            -----END EC PRIVATE KEY-----
-        "};
-        // println!("{}", ec_pem);
-        // println!("{}", from_sec1_pem(ec_pem).unwrap());
-        let pkcs8_pem = from_sec1_pem(ec_pem).unwrap();
         assert!(pkcs8_pem.starts_with("-----BEGIN PRIVATE KEY-----"));
         assert!(pkcs8_pem.ends_with("-----END PRIVATE KEY-----\n"));
     }
